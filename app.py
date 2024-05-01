@@ -1,3 +1,4 @@
+import argparse
 from typing import List
 
 import time
@@ -19,7 +20,7 @@ def get_leveraged_symbols(data: List[dict], leverage_filter: int = 100) -> List[
     global coins
     leveraged_symbols = []
     for d in data:
-        if d['symbol'].lower()[-4:] == "usdt":
+        if d["symbol"].lower()[-4:] == "usdt":
             if d["maxLeverage"] >= leverage_filter:
                 leveraged_symbols.append(d["symbol"])
                 coins[d["symbol"]] = {
@@ -43,7 +44,7 @@ def calclulate_data_for_coins():
     # "contract_equal_to_coin" que es el mínimo de monedas y obtener el valor de entrada
     for k in coins.keys():
         coins[k]["min_value"] = (
-                coins[k]["contract_equal_to_coin"] * coins[k]["last_price"]
+            coins[k]["contract_equal_to_coin"] * coins[k]["last_price"]
         )
         coins[k]["min_margin"] = round(coins[k]["min_value"] / coins[k]["leverage"], 4)
 
@@ -52,7 +53,10 @@ def get_tradeable_symbols(filter_price, volaility_filter) -> List[str]:
     global coins
     tradeable_symbols = []
     for k in coins.keys():
-        if coins[k]["min_margin"] <= filter_price and coins[k]['volatility'] >= volaility_filter:
+        if (
+            coins[k]["min_margin"] <= filter_price
+            and coins[k]["volatility"] >= volaility_filter
+        ):
             tradeable_symbols.append(k)
     return tradeable_symbols
 
@@ -63,7 +67,7 @@ def get_actual_volatility(client: MexcFutures, lookback_bars: int):
     global coins
     for k in coins.keys():
         data = client.get_klines(symbol=k, interval_minutes=5, limit=lookback_bars)
-        coins[k]['volatility'] = get_volatility(data)
+        coins[k]["volatility"] = get_volatility(data)
         time.sleep(2)
 
 
@@ -83,14 +87,64 @@ def filer_by_minimum_margin(min_margin):
     return coins_with_min_margin
 
 
+def msg(symbol: str, leverage: int, volatilidad: float, min_margin: float) -> str:
+    msg = f"{'*' * 50}\nSymbol: {symbol.upper()}\nApalancamiento: {leverage}\nvolatilidad:  {volatilidad}%\nMargen Mínimo: ${min_margin}\n{'*' * 50}"
+    return msg
+
+
 def run():
     global coins
-    leverage = 125
-    capital = 30
-    price_filter = round((0.1 * capital) / 100, 2)
-    volatilidad = 1  # En porcentaje
-    velas = 5  # la cantidad de velas que usaremos para revisar la volatilidad
+    parser = argparse.ArgumentParser(description="Excaneador de monedas")
+    parser.add_argument('-c', '--capital', type=float, help='Capital de tu cuenta')
+    parser.add_argument('-l', '--apalancamiento', type=int, default=100, required=False, help='Apalancamiento mínimo a buscar. Default 100')
+    parser.add_argument('-k', '--klines', type=int, default=5, required=False, help='cantidad de velas a ver hacia atrás para medir la volatilidad. Default 1%')
+    parser.add_argument('-v','--volatilidad', type=float, default=1.0, required=False, help='Volatilidad mínima promedio en las últimas velas. Default 5')
+    
+    args = parser.parse_args()
 
+    try:
+        if args.capital is None:
+            raise ValueError("Debes ingresar un capital. Usa <<python app.py -c 'capital'>>")
+        capital = args.capital
+        
+        leverage = args.apalancamiento
+        velas = args.klines
+        volatilidad = args.volatilidad
+        price_filter = round((0.1 * capital) / 100, 2)
+
+        print("Conectando con exchange ...")
+        client = MexcFutures(api_key="", api_secret="")
+        print("Conexión establecida, obteniendo symbols tradeables ...")
+        all_symbols_info = client.get_all_contracts_info()
+        print(f"Todos los symbols: {len(all_symbols_info)}")
+        leveraged_symbols = get_leveraged_symbols(all_symbols_info, leverage)
+        print(f"Monedas que cumple apalancamiento >= {leverage}: {len(leveraged_symbols)}")
+        all_symbols_market_info = client.get_all_contracts_market_data()
+        filter_market_data(data=all_symbols_market_info, symbols_filter=leveraged_symbols)
+        calclulate_data_for_coins()
+        coins = filer_by_minimum_margin(min_margin=price_filter)
+        print(f"Monedas que cumplen con margen mínimo: {len(coins)}")
+        print("Buscando volatilidad ...")
+        get_actual_volatility(client=client, lookback_bars=velas)
+        tradeable_symbols = get_tradeable_symbols(price_filter, volatilidad)
+        print("Monedas tradeables")
+        if len(tradeable_symbols) > 0:
+            for s in tradeable_symbols:
+                print(
+                    msg(
+                        symbol=s,
+                        leverage=coins[s]["leverage"],
+                        volatilidad=coins[s]["volatility"],
+                        min_margin=coins[s]["min_margin"],
+                    )
+                )
+        else:
+            print("No hay symbols tradeables por el momento")
+
+    except ValueError as ve:
+        print(ve)
+
+    """
     btc_5min_kline = KlineSubscribeChannel(symbol="BTC_USDT", interval="Min5")
     print("Conexion Cliente")
     client = MexcFutures(api_key="", api_secret="")
@@ -120,10 +174,21 @@ def run():
     get_actual_volatility(client=client, lookback_bars=velas)
 
     tradeable_symbols = get_tradeable_symbols(price_filter, volatilidad)
-    print(f"Symbols tradeables que cumplen apalancamiento >= {leverage}, margen minimo <= {price_filter} y "
-          f"volatilidad >= {volatilidad}% en las últimas {velas} velas")
-    print(tradeable_symbols)
-    #print(coins)
+
+    if len(tradeable_symbols) > 0:
+        for s in tradeable_symbols:
+            print(
+                msg(
+                    symbol=s,
+                    leverage=coins[s]["leverage"],
+                    volatilidad=coins[s]["volatility"],
+                    min_margin=coins[s]["min_margin"],
+                )
+            )
+    else:
+        print("No hay symbols tradeables por el momento")"""
+
+
 """
     
     # klines = client.get_klines(interval_minutes=5, symbol="Btc")
