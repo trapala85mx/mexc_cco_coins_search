@@ -96,21 +96,25 @@ def run():
     global coins
     parser = argparse.ArgumentParser(description="Excaneador de monedas")
     parser.add_argument('-c', '--capital', type=float, help='Capital de tu cuenta')
+    parser.add_argument('-s', '--estrategia', type=str, help='Estrategia a usar', choices=["cco", "ccd"], default="ccd")
     parser.add_argument('-l', '--apalancamiento', type=int, default=100, required=False, help='Apalancamiento mínimo a buscar. Default 100')
-    parser.add_argument('-k', '--klines', type=int, default=5, required=False, help='cantidad de velas a ver hacia atrás para medir la volatilidad. Default 1%')
-    parser.add_argument('-v','--volatilidad', type=float, default=1.0, required=False, help='Volatilidad mínima promedio en las últimas velas. Default 5')
-    
+    parser.add_argument('-k', '--klines', type=int, default=5, required=False, help='cantidad de velas a ver hacia atrás para medir la volatilidad. Default 5')
+    parser.add_argument('-v','--volatilidad', type=float, default=1.0, required=False, help='Volatilidad mínima promedio en las últimas velas. Default 1%')
     args = parser.parse_args()
 
     try:
         if args.capital is None:
             raise ValueError("Debes ingresar un capital. Usa <<python app.py -c 'capital'>>")
         capital = args.capital
-        
+
+        if args.estrategia.lower() == "ccd":
+            price_filter = round((0.05 * capital) / 100, 2)
+        else:
+            price_filter = round((0.1 * capital) / 100, 2)
+
         leverage = args.apalancamiento
         velas = args.klines
         volatilidad = args.volatilidad
-        price_filter = round((0.1 * capital) / 100, 2)
 
         print("Conectando con exchange ...")
         client = MexcFutures(api_key="", api_secret="")
@@ -143,51 +147,6 @@ def run():
 
     except ValueError as ve:
         print(ve)
-
-    """
-    btc_5min_kline = KlineSubscribeChannel(symbol="BTC_USDT", interval="Min5")
-    print("Conexion Cliente")
-    client = MexcFutures(api_key="", api_secret="")
-    print("extaccion informacion contratos")
-    # Traer toda  la info de todas las moendas
-    all_symbols_info = client.get_all_contracts_info()
-    print("Todos los symbols", len(all_symbols_info))
-
-    # Nos quedamos con las monedas que tengan un apalancamiento mayor o igual al establecido
-    leveraged_symbols = get_leveraged_symbols(all_symbols_info, leverage)
-    print("Symbols con  leverage >=  ", leverage, ":", len(leveraged_symbols))
-
-    # Traemos toda la información de mercado para todas las moendas
-    all_symbols_market_info = client.get_all_contracts_market_data()
-
-    # Obtenemos el precio más actual de las monedas que cumplen el apalancamiento
-    filter_market_data(data=all_symbols_market_info, symbols_filter=leveraged_symbols)
-
-    # De la información obtenida calculamos el precio de entrada para obtener el margen mínimo necesario
-    calclulate_data_for_coins()
-
-    # filtramos moendas por minimo margen necesario
-    coins = filer_by_minimum_margin(min_margin=price_filter)
-    print(f"Symbols que cumplen el mínimo margen de ${price_filter}: {len(coins)}")
-
-    # Obtener las velas de cada moneda y obtener la volatilidad de cada una
-    get_actual_volatility(client=client, lookback_bars=velas)
-
-    tradeable_symbols = get_tradeable_symbols(price_filter, volatilidad)
-
-    if len(tradeable_symbols) > 0:
-        for s in tradeable_symbols:
-            print(
-                msg(
-                    symbol=s,
-                    leverage=coins[s]["leverage"],
-                    volatilidad=coins[s]["volatility"],
-                    min_margin=coins[s]["min_margin"],
-                )
-            )
-    else:
-        print("No hay symbols tradeables por el momento")"""
-
 
 """
     
